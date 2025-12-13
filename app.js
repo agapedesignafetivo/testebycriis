@@ -22,6 +22,11 @@ const videoPreviewOverlay = document.getElementById('videoPreviewOverlay');
 const videoPreview = document.getElementById('videoPreview');
 const btnDownloadVideo = document.getElementById('btnDownloadVideo');
 let lastVideoUrl = null;
+const recIndicator = document.getElementById('recIndicator');
+const recTimeEl = document.getElementById('recTime');
+let recTimer = null;
+let recStartTime = null;
+
 
 
 // Configurações
@@ -72,19 +77,6 @@ async function startCamera() {
     showStatus('Erro ao acessar câmera', true);
   }
 }
-
-// ========================================
-// FOTO (9:16 com moldura e brilhos)
-// ========================================
-function takePhoto() {
-  if (!stream) return;
-
-  const width = 720;
-  const height = 1280;
-  
-  photoCanvas.width = width;
-  photoCanvas.height = height;
-  const ctx = photoCanvas.getContext('2d');
 
   // CORREÇÃO: Mantém proporção do vídeo original
   const videoAspect = video.videoWidth / video.videoHeight;
@@ -277,6 +269,20 @@ function startRecording() {
     }
   };
 
+// LIGA REC + CONTAGEM
+  recStartTime = Date.now();
+  recIndicator.style.display = 'flex';
+  recTimeEl.textContent = '00:00';
+
+  if (recTimer) clearInterval(recTimer);
+  recTimer = setInterval(() => {
+    const diff = Math.floor((Date.now() - recStartTime) / 1000); // segundos
+    const mm = String(Math.floor(diff / 60)).padStart(2, '0');
+    const ss = String(diff % 60).padStart(2, '0');
+    recTimeEl.textContent = `${mm}:${ss}`;
+  }, 1000);
+  
+
   mediaRecorder.start(200);
   btnStartRec.style.display = 'none';
   btnStopRec.style.display = 'inline-block';
@@ -286,6 +292,15 @@ function startRecording() {
 function stopRecording() {
   if (mediaRecorder && mediaRecorder.state === 'recording') {
     mediaRecorder.stop();
+
+
+// DESLIGA REC + CONTAGEM
+    recIndicator.style.display = 'none';
+    if (recTimer) {
+      clearInterval(recTimer);
+      recTimer = null;
+    }
+
     btnStartRec.style.display = 'inline-block';
     btnStopRec.style.display = 'none';
     showStatus('Processando vídeo...');
@@ -438,23 +453,6 @@ btnDownloadVideo.onclick = () => {
   showStatus('Download do vídeo solicitado');
 };
 
-btnPhoto.onclick = takePhoto;
-btnStartRec.onclick = startRecording;
-btnStopRec.onclick = stopRecording;
-
-btnDownloadVideo.onclick = () => {
-  if (!lastVideoUrl) return;
-
-  const a = document.createElement('a');
-  a.href = lastVideoUrl;
-  a.download = 'video-moldura.mp4';
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-
-  showStatus('Download do vídeo solicitado');
-};
-
 btnRecordAgain.onclick = () => {
   videoPreviewOverlay.style.display = 'none';
   videoPreview.pause();
@@ -478,7 +476,6 @@ btnBrilhos.onclick = () => {
   brilhosAtivos = !brilhosAtivos;
   showStatus(brilhosAtivos ? 'Brilhos ON ✨' : 'Brilhos OFF');
 };
-
 
 
 // ========================================
