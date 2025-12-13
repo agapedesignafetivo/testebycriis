@@ -131,37 +131,62 @@ function takePhoto() {
 
 
 // ========================================
-// VÍDEO (9:16 com moldura e brilhos)
+// FOTO (9:16 com moldura e brilhos)
 // ========================================
-function drawFrame() {
-  if (!drawing) return;
 
-  ctx.clearRect(0, 0, width, height);
+// Função auxiliar: desenha o vídeo sem esticar (faz CROP)
+function drawVideoFit(ctx, video, W, H, mirror) {
+  if (video.readyState < 2 || !video.videoWidth) return;
 
-  // CORREÇÃO: Mesmo cálculo de proporção para vídeo
-  const videoAspect = video.videoWidth / video.videoHeight;
-  const canvasAspect = width / height;
-  
-  let drawWidth, drawHeight, offsetX = 0, offsetY = 0;
+  const vw = video.videoWidth;
+  const vh = video.videoHeight;
+  const videoAspect = vw / vh;
+  const canvasAspect = W / H;
+
+  let dw, dh, dx, dy;
 
   if (videoAspect > canvasAspect) {
-    drawHeight = height;
-    drawWidth = height * videoAspect;
-    offsetX = (width - drawWidth) / 2;
+    // vídeo mais deitado -> corta laterais
+    dh = H;
+    dw = H * videoAspect;
+    dx = (W - dw) / 2;
+    dy = 0;
   } else {
-    drawWidth = width;
-    drawHeight = width / videoAspect;
-    offsetY = (height - drawHeight) / 2;
+    // vídeo mais em pé -> corta em cima/baixo
+    dw = W;
+    dh = W / videoAspect;
+    dx = 0;
+    dy = (H - dh) / 2;
   }
 
-  // Vídeo (centralizado)
   ctx.save();
-  if (usingFront) {
-    ctx.translate(width, 0);
+  if (mirror) {
+    ctx.translate(W, 0);
     ctx.scale(-1, 1);
   }
-  ctx.drawImage(video, offsetX, offsetY, drawWidth, drawHeight);
+  ctx.drawImage(video, dx, dy, dw, dh);
   ctx.restore();
+}
+
+function takePhoto() {
+  if (!stream || video.readyState < 2) {
+    showStatus('Aguarde a câmera carregar...', true);
+    return;
+  }
+
+  const width = 720;
+  const height = 1280;
+
+  photoCanvas.width = width;
+  photoCanvas.height = height;
+  const ctx = photoCanvas.getContext('2d');
+
+  // Fundo
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, width, height);
+
+  // Vídeo sem esticar
+  drawVideoFit(ctx, video, width, height, usingFront);
 
   // Moldura
   ctx.drawImage(overlay, 0, 0, width, height);
@@ -169,26 +194,82 @@ function drawFrame() {
   // Brilhos
   desenharBrilhosNaFoto(ctx, width, height);
 
-  requestAnimationFrame(drawFrame);
+  // Download e preview
+  const dataUrl = photoCanvas.toDataURL('image/png');
+  preview.src = dataUrl;
+  preview.style.display = 'block';
+  setTimeout(() => preview.style.display = 'none', 3000);
+  preview.onclick = () => preview.style.display = 'none';
+
+  const link = document.createElement('a');
+  link.href = dataUrl;
+  link.download = 'foto-moldura.png';
+  link.click();
+
+  showStatus('Foto salva (sem esticar)');
 }
+
+// ========================================
+// VÍDEO (9:16 com moldura e brilhos)
+// ========================================
+function startRecording() {
+  if (!stream || video.readyState < 2) {
+    showStatus('Aguarde a câmera carregar...', true);
+    return;
+  }
+
+  const width = 720;
+  const height = 1280;
+
+  recordCanvas.width = width;
+  recordCanvas.height = height;
+  const ctx = recordCanvas.getContext('2d');
+
+  drawing = true;
+
+  function drawFrame() {
+    if (!drawing) return;
+
+    ctx.clearRect(0, 0, width, height);
+
+    // Fundo + vídeo sem esticar
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, width, height);
+    drawVideoFit(ctx, video, width, height, usingFront);
+
+    // Moldura
+    ctx.drawImage(overlay, 0, 0, width, height);
+
+    // Brilhos
+    desenharBrilhosNaFoto(ctx, width, height);
+
+    requestAnimationFrame(drawFrame);
+  }
+
   drawFrame();
 
-  // Gravação
+  // Gravação a partir do canvas
   const canvasStream = recordCanvas.captureStream(24);
   const mixedStream = new MediaStream([...canvasStream.getVideoTracks()]);
-  
+
   const audioTrack = stream.getAudioTracks()[0];
   if (audioTrack) mixedStream.addTrack(audioTrack);
 
   chunks = [];
   mediaRecorder = new MediaRecorder(mixedStream, { mimeType: 'video/webm' });
 
-  mediaRecorder.ondataavailable = e => e.data.size > 0 && chunks.push(e.data);
+  mediaRecorder.ondataavailable = e => {
+    if (e.data.size > 0) chunks.push(e.data);
+  };
+
   mediaRecorder.onstop = () => {
     drawing = false;
     const blob = new Blob(chunks, { type: 'video/webm' });
-    if (blob.size) sendToServer(blob);
-    else showStatus('Vídeo vazio', true);
+    if (blob.size) {
+      sendToServer(blob);
+    } else {
+      showStatus('Vídeo vazio', true);
+    }
   };
 
   mediaRecorder.start(200);
@@ -198,13 +279,14 @@ function drawFrame() {
 }
 
 function stopRecording() {
-  if (mediaRecorder?.state === 'recording') {
+  if (mediaRecorder && mediaRecorder.state === 'recording') {
     mediaRecorder.stop();
     btnStartRec.style.display = 'inline-block';
     btnStopRec.style.display = 'none';
     showStatus('Processando vídeo...');
   }
 }
+
 
 // ========================================
 // CONVERSÃO API (Railway)
