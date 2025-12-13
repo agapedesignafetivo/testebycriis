@@ -1,391 +1,296 @@
-// ========================================
-// CABINE DE FOTOS COMPLETA - CRIS PRODUÇÕES
-// ========================================
-
-// Elementos do HTML
-const video = document.getElementById('video');
-const overlay = document.getElementById('overlay');
-const photoCanvas = document.getElementById('photoCanvas');
-const recordCanvas = document.getElementById('recordCanvas');
-const preview = document.getElementById('preview');
-const statusEl = document.getElementById('status');
-const btnCamera = document.getElementById('btnCamera');
-const btnPhoto = document.getElementById('btnPhoto');
-const btnStartRec = document.getElementById('btnStartRec');
-const btnStopRec = document.getElementById('btnStopRec');
-const btnMoldura = document.getElementById('btnMoldura');
-const btnBrilhos = document.getElementById('btnBrilhos');
-const brilhosCanvas = document.getElementById('brilhosCanvas');
-const bCtx = brilhosCanvas.getContext('2d');
-const brilhoImg = document.getElementById('brilhoImg');
-const videoPreviewOverlay = document.getElementById('videoPreviewOverlay');
-const videoPreview = document.getElementById('videoPreview');
-const btnDownloadVideo = document.getElementById('btnDownloadVideo');
-let lastVideoUrl = null;
-const recIndicator = document.getElementById('recIndicator');
-const recTimeEl = document.getElementById('recTime');
-let recTimer = null;
-let recStartTime = null;
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Teste by Criis</title>
+  <style>
 
 
-
-// Configurações
-const API_URL = 'https://moldurapersonalizadabycriisproducoes-production.up.railway.app/convert';
-const molduras = ['moldura1.png', 'moldura2.png'];
-let molduraIndex = 0;
-
-// Estado global
-let usingFront = true;
-let stream = null;
-let mediaRecorder = null;
-let chunks = [];
-let drawing = false;
-let brilhos = [];
-let brilhosAtivos = true;
-const MAX_BRILHOS = 15;
-
-// ========================================
-// UTILITÁRIOS
-// ========================================
-function showStatus(msg, isError = false) {
-  statusEl.textContent = msg;
-  statusEl.style.display = 'inline-block';
-  statusEl.style.backgroundColor = isError ? 'rgba(180,0,0,0.7)' : 'rgba(0,0,0,0.6)';
-  setTimeout(() => statusEl.style.display = 'none', 4000);
+#recIndicator {
+  position: fixed;
+  top: 40px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: none;
+  align-items: center;
+  gap: 8px;
+  font-family: sans-serif;
+  font-size: 16px;
+  font-weight: 700;
+  color: #ff5555;
+  z-index: 25;
 }
 
-// ========================================
-// CÂMERA
-// ========================================
-async function startCamera() {
-  try {
-    if (stream) stream.getTracks().forEach(track => track.stop());
+#recIndicator .rec-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff0000;
+  box-shadow: 0 0 6px rgba(255,0,0,0.7);
+  animation: recBlink 1s infinite;
+}
 
-    const constraints = {
-      video: { facingMode: usingFront ? 'user' : 'environment' },
-      audio: true
-    };
+@keyframes recBlink {
+  0%, 50% { opacity: 1; }
+  50%, 100% { opacity: 0.2; }
+}
 
-    stream = await navigator.mediaDevices.getUserMedia(constraints);
-    video.srcObject = stream;
-    video.style.transform = usingFront ? 'scaleX(-1)' : 'scaleX(1)';
+
     
-    // Inicia brilhos quando câmera carregar
-    initBrilhos();
-  } catch (error) {
-    console.error('Erro câmera:', error);
-    showStatus('Erro ao acessar câmera', true);
-  }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { margin:0; background:#000; color:#fff; font-family:sans-serif; overflow:hidden; }
+
+    
+    #videoPreviewOverlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.8);
+  display: none;              /* começa escondido */
+  align-items: center;
+  justify-content: center;
+  z-index: 50;
 }
 
-  // CORREÇÃO: Mantém proporção do vídeo original
-  const videoAspect = video.videoWidth / video.videoHeight;
-  const canvasAspect = width / height;
-  
-  let drawWidth, drawHeight, offsetX = 0, offsetY = 0;
-
-  if (videoAspect > canvasAspect) {
-    // Vídeo mais largo: ajusta altura
-    drawHeight = height;
-    drawWidth = height * videoAspect;
-    offsetX = (width - drawWidth) / 2;
-  } else {
-    // Vídeo mais alto: ajusta largura
-    drawWidth = width;
-    drawHeight = width / videoAspect;
-    offsetY = (height - drawHeight) / 2;
-  }
-
-  // Vídeo (centralizado e com proporção correta)
-  ctx.save();
-  if (usingFront) {
-    ctx.translate(width, 0);
-    ctx.scale(-1, 1);
-  }
-  ctx.drawImage(video, offsetX, offsetY, drawWidth, drawHeight);
-  ctx.restore();
-
-  // Moldura (ocupa todo o canvas)
-  ctx.drawImage(overlay, 0, 0, width, height);
-
-  // Brilhos
-  desenharBrilhosNaFoto(ctx, width, height);
-
-  // Download e preview
-  const dataUrl = photoCanvas.toDataURL('image/png');
-  preview.src = dataUrl;
-  preview.style.display = 'block';
-  setTimeout(() => preview.style.display = 'none', 3000);
-  preview.onclick = () => preview.style.display = 'none';
-
-  const link = document.createElement('a');
-  link.href = dataUrl;
-  link.download = 'foto-moldura.png';
-  link.click();
-
-  showStatus('Foto salva (proporção corrigida)');
-
-
-// ========================================
-// FOTO (9:16 com moldura e brilhos)
-// ========================================
-
-// Função auxiliar: desenha o vídeo sem esticar (faz CROP)
-function drawVideoFit(ctx, video, W, H, mirror) {
-  if (video.readyState < 2 || !video.videoWidth) return;
-
-  const vw = video.videoWidth;
-  const vh = video.videoHeight;
-  const videoAspect = vw / vh;
-  const canvasAspect = W / H;
-
-  let dw, dh, dx, dy;
-
-  if (videoAspect > canvasAspect) {
-    // vídeo mais deitado -> corta laterais
-    dh = H;
-    dw = H * videoAspect;
-    dx = (W - dw) / 2;
-    dy = 0;
-  } else {
-    // vídeo mais em pé -> corta em cima/baixo
-    dw = W;
-    dh = W / videoAspect;
-    dx = 0;
-    dy = (H - dh) / 2;
-  }
-
-  ctx.save();
-  if (mirror) {
-    ctx.translate(W, 0);
-    ctx.scale(-1, 1);
-  }
-  ctx.drawImage(video, dx, dy, dw, dh);
-  ctx.restore();
+.video-preview-box {
+  max-width: 90vw;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
 }
 
-function takePhoto() {
-  if (!stream || video.readyState < 2) {
-    showStatus('Aguarde a câmera carregar...', true);
-    return;
-  }
-
-  const width = 720;
-  const height = 1280;
-
-  photoCanvas.width = width;
-  photoCanvas.height = height;
-  const ctx = photoCanvas.getContext('2d');
-
-  // Fundo
-  ctx.fillStyle = '#000';
-  ctx.fillRect(0, 0, width, height);
-
-  // Vídeo sem esticar
-  drawVideoFit(ctx, video, width, height, usingFront);
-
-  // Moldura
-  ctx.drawImage(overlay, 0, 0, width, height);
-
-  // Brilhos
-  desenharBrilhosNaFoto(ctx, width, height);
-
-  // Download e preview
-  const dataUrl = photoCanvas.toDataURL('image/png');
-  preview.src = dataUrl;
-  preview.style.display = 'block';
-  setTimeout(() => preview.style.display = 'none', 3000);
-  preview.onclick = () => preview.style.display = 'none';
-
-  const link = document.createElement('a');
-  link.href = dataUrl;
-  link.download = 'foto-moldura.png';
-  link.click();
-
-  showStatus('Foto salva (sem esticar)');
+#videoPreview {
+  max-width: 100%;
+  max-height: 70vh;
+  border-radius: 12px;
+  background: #000;
 }
 
-// ========================================
-// VÍDEO (9:16 com moldura e brilhos)
-// ========================================
-function startRecording() {
-  if (!stream || video.readyState < 2) {
-    showStatus('Aguarde a câmera carregar...', true);
-    return;
-  }
-
-  const width = 720;
-  const height = 1280;
-
-  recordCanvas.width = width;
-  recordCanvas.height = height;
-  const ctx = recordCanvas.getContext('2d');
-
-  drawing = true;
-
-  function drawFrame() {
-    if (!drawing) return;
-
-    ctx.clearRect(0, 0, width, height);
-
-    // Fundo + vídeo sem esticar
-    ctx.fillStyle = '#000';
-    ctx.fillRect(0, 0, width, height);
-    drawVideoFit(ctx, video, width, height, usingFront);
-
-    // Moldura
-    ctx.drawImage(overlay, 0, 0, width, height);
-
-    // Brilhos
-    desenharBrilhosNaFoto(ctx, width, height);
-
-    requestAnimationFrame(drawFrame);
-  }
-
-  drawFrame();
-
-  // Gravação a partir do canvas
-  const canvasStream = recordCanvas.captureStream(24);
-  const mixedStream = new MediaStream([...canvasStream.getVideoTracks()]);
-
-  const audioTrack = stream.getAudioTracks()[0];
-  if (audioTrack) mixedStream.addTrack(audioTrack);
-
-  chunks = [];
-  mediaRecorder = new MediaRecorder(mixedStream, { mimeType: 'video/webm' });
-
-  mediaRecorder.ondataavailable = e => {
-    if (e.data.size > 0) chunks.push(e.data);
-  };
-
-  mediaRecorder.onstop = () => {
-    drawing = false;
-    const blob = new Blob(chunks, { type: 'video/webm' });
-    if (blob.size) {
-      sendToServer(blob);
-    } else {
-      showStatus('Vídeo vazio', true);
-    }
-  };
-
-// LIGA REC + CONTAGEM
-  recStartTime = Date.now();
-  recIndicator.style.display = 'flex';
-  recTimeEl.textContent = '00:00';
-
-  if (recTimer) clearInterval(recTimer);
-  recTimer = setInterval(() => {
-    const diff = Math.floor((Date.now() - recStartTime) / 1000); // segundos
-    const mm = String(Math.floor(diff / 60)).padStart(2, '0');
-    const ss = String(diff % 60).padStart(2, '0');
-    recTimeEl.textContent = `${mm}:${ss}`;
-  }, 1000);
-  
-
-  mediaRecorder.start(200);
-  btnStartRec.style.display = 'none';
-  btnStopRec.style.display = 'inline-block';
-  showStatus('🔴 Gravando...');
+#btnDownloadVideo {
+  padding: 10px 16px;
+  border: 0;
+  border-radius: 10px;
+  font-size: 16px;
+  font-weight: 700;
+  background: #ffffffd0;
 }
 
-function stopRecording() {
-  if (mediaRecorder && mediaRecorder.state === 'recording') {
-    mediaRecorder.stop();
-
-
-// DESLIGA REC + CONTAGEM
-    recIndicator.style.display = 'none';
-    if (recTimer) {
-      clearInterval(recTimer);
-      recTimer = null;
+    
+    
+    
+    #video {
+      position:fixed;
+      top:0; left:0;
+      width:100vw;
+      height:100vh;
+      object-fit:cover;
+      background:black;
     }
 
-    btnStartRec.style.display = 'inline-block';
-    btnStopRec.style.display = 'none';
-    showStatus('Processando vídeo...');
-  }
-}
-
-
-// ========================================
-// CONVERSÃO API (Railway)
-// ========================================
-async function sendToServer(blob) {
-  showStatus('Enviando para conversão...');
-  try {
-    const formData = new FormData();
-    formData.append('video', blob, 'video.webm');
-
-    const response = await fetch(API_URL, { method: 'POST', body: formData });
-    if (!response.ok) throw new Error('API falhou');
-
-    // AQUI entra o trecho que você perguntou
-    const mp4Blob = await response.blob();
-    const url = URL.createObjectURL(mp4Blob);
-
-    if (lastVideoUrl) URL.revokeObjectURL(lastVideoUrl);
-    lastVideoUrl = url;
-
-    videoPreview.src = url;
-    videoPreviewOverlay.style.display = 'flex';
-    showStatus('Vídeo pronto (veja o preview)');
-  } catch (error) {
-    console.error(error);
-    showStatus('❌ Erro na conversão', true);
-  }
-}
-
-// ========================================
-// BRILHOS ANIMADOS
-// ========================================
-function criarBrilho() {
-  brilhos.push({
-    x: Math.random() * 100,
-    y: Math.random() * 100,
-    size: Math.random() * 20 + 10,
-    opacity: Math.random() * 0.5 + 0.5,
-    dx: (Math.random() - 0.5) * 0.3,
-    dy: (Math.random() - 0.5) * 0.3,
-    dOpacity: (Math.random() - 0.5) * 0.02
-  });
-  
-  if (brilhos.length > MAX_BRILHOS) brilhos.shift();
-}
-
-function desenharBrilho(ctx, brilho, width, height) {
-  const x = (brilho.x * width) / 100;
-  const y = (brilho.y * height) / 100;
-  const size = brilho.size;
-  
-  ctx.save();
-  ctx.globalAlpha = brilho.opacity;
-  ctx.drawImage(brilhoImg, x - size/2, y - size/2, size, size);
-  ctx.restore();
-}
-
-function desenharBrilhosNaFoto(ctx, width, height) {
-  if (!brilhosAtivos) return;
-  brilhos.forEach(brilho => desenharBrilho(ctx, brilho, width, height));
-}
-
-function atualizarBrilhos() {
-  brilhos.forEach(brilho => {
-    brilho.x += brilho.dx;
-    brilho.y += brilho.dy;
-    brilho.opacity += brilho.dOpacity;
-
-    // Piscar
-    if (brilho.opacity <= 0) {
-      brilho.opacity = 0;
-      brilho.dOpacity = Math.abs(brilho.dOpacity);
-    } else if (brilho.opacity >= 1) {
-      brilho.opacity = 1;
-      brilho.dOpacity = -Math.abs(brilho.dOpacity);
+    #overlay {
+      position:fixed;
+      inset:0;
+      margin:auto;
+      max-width:100vw;
+      max-height:100vh;
+      pointer-events:none;
     }
 
-    // Reposicionar se sair da tela
-    if (brilho.x < -10 || brilho.x > 110 || brilho.y < -10 || brilho.y > 110) {
-      Object.assign(brilho, {
+    /* Canvas dos brilhos por cima de tudo */
+    #brilhosCanvas {
+      position:fixed;
+      inset:0;
+      width:100vw;
+      height:100vh;
+      pointer-events:none;
+      z-index:5;
+    }
+
+    /* Contêiner dos botões: faixa rolável embaixo */
+    #controls {
+      position: fixed;
+      bottom: 25px;
+      left: 0;
+      width: 100%;
+      display: flex;
+      gap: 20px;
+      padding: 0 16px;
+      z-index: 20;
+
+      overflow-x: auto;
+      overflow-y: hidden;
+      scroll-snap-type: x mandatory;
+    }
+
+    #controls::-webkit-scrollbar {
+      display: none; /* some a barrinha, mas ainda dá pra arrastar */
+    }
+
+    /* Botões como círculos com imagem */
+    .icon-btn {
+      flex: 0 0 auto;           /* não quebrar, ficar em linha rolável */
+      scroll-snap-align: center;
+
+      width: 80px;
+      height: 80px;
+      border-radius: 50%;
+      cursor: pointer;
+      border: none;
+      background: none;
+      padding: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: transform 0.2s;
+    }
+
+    .icon-btn img {
+      width: 100%;
+      height: 100%;
+      border-radius: 50%;
+      object-fit: cover;
+      display: block;
+    }
+
+    .icon-btn:active {
+      transform: scale(0.95);
+    }
+
+    #preview {
+      position:fixed;
+      top:10px;
+      right:10px;
+      max-width:40vw;
+      border:2px solid #fff;
+      display:none;
+      z-index:10;
+    }
+
+/* Botão "Gravar novamente" (preview do vídeo) */
+#btnRecordAgain {
+  padding: 10px 16px;
+  border-radius: 10px;
+  font-size: 16px;
+  font-weight: 700;
+
+  /* COR DE FUNDO DO BOTÃO: troque aqui */
+  background: #f44336;
+
+  /* COR DO TEXTO DO BOTÃO: troque aqui */
+  color: #ffffff;
+}
+
+
+
+    #status {
+      position:fixed;
+      top:10px;
+      left:50%;
+      transform:translateX(-50%);
+      background:rgba(0,0,0,0.6);
+      padding:6px 10px;
+      border-radius:999px;
+      font-size:13px;
+      display:none;
+      z-index:10;
+    }
+  </style>
+</head>
+<body>
+
+  <video id="video" autoplay playsinline muted></video>
+
+  <!-- começa com a moldura 1 -->
+  <img id="overlay" src="moldura1.png" alt="Moldura" />
+
+  <!-- canvas dos brilhos -->
+  <canvas id="brilhosCanvas"></canvas>
+
+  <!-- imagem usada para desenhar cada brilho -->
+  <img id="brilhoImg" src="brilho.png" style="display:none;" alt="">
+
+  <canvas id="photoCanvas" style="display:none;"></canvas>
+  <canvas id="recordCanvas" style="display:none;"></canvas>
+
+  <!-- AQUI entra o preview de VÍDEO -->
+  <div id="videoPreviewOverlay" style="display:none;">
+  <div class="video-preview-box">
+    <video id="videoPreview" controls playsinline></video>
+    <button id="btnDownloadVideo">Salvar vídeo</button>
+    <button id="btnRecordAgain">Gravar novamente</button>
+</div>
+</div>
+
+
+  <!-- e depois continua com -->
+  <img id="preview" />
+
+  <div id="status"></div>
+
+  <div id="recIndicator" style="display:none;">
+  <span class="rec-dot"></span>
+  <span id="recTime">00:00</span>
+</div>
+
+  <div id="controls">
+    <!-- câmera / foto / gravação -->
+    <button id="btnCamera" class="icon-btn" aria-label="Trocar câmera">
+      <img src="trocarcamera.png" alt="">
+    </button>
+
+    <button id="btnPhoto" class="icon-btn" aria-label="Tirar foto">
+      <img src="tirarfoto.png" alt="">
+    </button>
+
+    <button id="btnStartRec" class="icon-btn" aria-label="Gravar vídeo">
+      <img src="rec.png" alt="">
+    </button>
+
+    <button id="btnStopRec" class="icon-btn" style="display:none;" aria-label="stop">
+      <img src="stop.png" alt="">
+    </button>
+
+
+    <!-- botão único para trocar moldura -->
+    <button id="btnMoldura" class="icon-btn" aria-label="Trocar moldura">
+      <img src="trocarmoldura.png" alt="">
+    </button>
+
+    <!-- botão para ligar/desligar brilhos -->
+    <button id="btnBrilhos" class="icon-btn" aria-label="Ligar ou desligar brilhos">
+      <img src="brilhos.png" alt="">
+    </button>
+  </div>
+
+  <footer class="site-footer">
+    <p>© 2025 Cris Produções. Todos os direitos reservados. Reprodução e cópia deste projeto são proibidas.</p>
+  </footer>
+
+  <!-- seu JS principal (câmera, foto, vídeo, API) -->
+  <script src="app.js"></script>
+
+  <!-- brilhos + troca de moldura -->
+  <script>
+    const video = document.getElementById('video');
+
+    const videoPreviewOverlay = document.getElementById('videoPreviewOverlay');
+    const videoPreview = document.getElementById('videoPreview');
+    const btnDownloadVideo = document.getElementById('btnDownloadVideo');
+    let lastVideoUrl = null;
+
+
+    // ==== BRILHOS ====
+    const brilhosCanvas = document.getElementById('brilhosCanvas');
+    const bCtx = brilhosCanvas.getContext('2d');
+    const brilhoImg = document.getElementById('brilhoImg');
+
+    let brilhos = [];
+    const MAX_BRILHOS = 15;
+    let brilhosAtivos = true; // começa ligado
+
+    function criarBrilho() {
+      brilhos.push({
         x: Math.random() * 100,
         y: Math.random() * 100,
         size: Math.random() * 20 + 10,
@@ -394,90 +299,99 @@ function atualizarBrilhos() {
         dy: (Math.random() - 0.5) * 0.3,
         dOpacity: (Math.random() - 0.5) * 0.02
       });
+      if (brilhos.length > MAX_BRILHOS) brilhos.shift();
     }
-  });
-}
 
-let animationId;
-function animarBrilhos() {
-  bCtx.clearRect(0, 0, brilhosCanvas.width, brilhosCanvas.height);
-  
-  if (brilhosAtivos) {
-    atualizarBrilhos();
-    brilhos.forEach(brilho => desenharBrilho(bCtx, brilho, brilhosCanvas.width, brilhosCanvas.height));
-  }
-  
-  animationId = requestAnimationFrame(animarBrilhos);
-}
-
-function initBrilhos() {
-  if (video.readyState >= 2 && video.videoWidth > 0) {
-    brilhosCanvas.width = video.videoWidth;
-    brilhosCanvas.height = video.videoHeight;
-    brilhos = [];
-    
-    for (let i = 0; i < MAX_BRILHOS; i++) {
-      criarBrilho();
+    function desenharBrilho(ctx, brilho, canvasWidth, canvasHeight) {
+      const x = brilho.x * (canvasWidth / 100);
+      const y = brilho.y * (canvasHeight / 100);
+      const r = brilho.size;
+      ctx.save();
+      ctx.globalAlpha = brilho.opacity;
+      ctx.drawImage(brilhoImg, x - r / 2, y - r / 2, r, r);
+      ctx.restore();
     }
-    
-    if (animationId) cancelAnimationFrame(animationId);
-    animarBrilhos();
-  } else {
-    video.onloadedmetadata = initBrilhos;
-  }
-}
 
-// ========================================
-// EVENTOS DOS BOTÕES
-// ========================================
-btnCamera.onclick = () => {
-  usingFront = !usingFront;
-  startCamera();
-};
+    function atualizarBrilhos() {
+      brilhos.forEach(b => {
+        b.x += b.dx;
+        b.y += b.dy;
+        b.opacity += b.dOpacity;
 
-btnPhoto.onclick = takePhoto;
-btnStartRec.onclick = startRecording;
-btnStopRec.onclick = stopRecording;
+        if (b.opacity <= 0) {
+          b.opacity = 0;
+          b.dOpacity = Math.abs(b.dOpacity);
+        } else if (b.opacity >= 1) {
+          b.opacity = 1;
+          b.dOpacity = -Math.abs(b.dOpacity);
+        }
 
-btnDownloadVideo.onclick = () => {
-  if (!lastVideoUrl) return;
+        if (b.x < -10 || b.x > 110 || b.y < -10 || b.y > 110) {
+          b.x = Math.random() * 100;
+          b.y = Math.random() * 100;
+          b.size = Math.random() * 20 + 10;
+          b.opacity = Math.random() * 0.5 + 0.5;
+          b.dx = (Math.random() - 0.5) * 0.3;
+          b.dy = (Math.random() - 0.5) * 0.3;
+          b.dOpacity = (Math.random() - 0.5) * 0.02;
+        }
+      });
+    }
 
-  const a = document.createElement('a');
-  a.href = lastVideoUrl;
-  a.download = 'video-moldura.mp4';
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
+    function animarBrilhosRealtime() {
+      bCtx.clearRect(0, 0, brilhosCanvas.width, brilhosCanvas.height);
 
-  showStatus('Download do vídeo solicitado');
-};
+      if (brilhosAtivos) {
+        atualizarBrilhos();
+        brilhos.forEach(brilho =>
+          desenharBrilho(bCtx, brilho, brilhosCanvas.width, brilhosCanvas.height)
+        );
+      }
 
-btnRecordAgain.onclick = () => {
-  videoPreviewOverlay.style.display = 'none';
-  videoPreview.pause();
+      requestAnimationFrame(animarBrilhosRealtime);
+    }
 
-  if (lastVideoUrl) {
-    URL.revokeObjectURL(lastVideoUrl);
-    lastVideoUrl = null;
-  }
+    function initBrilhosQuandoVideoPronto() {
+      if (video.readyState >= 2 && video.videoWidth > 0) {
+        brilhosCanvas.width = video.videoWidth;
+        brilhosCanvas.height = video.videoHeight;
+        brilhos = [];
+        for (let i = 0; i < MAX_BRILHOS; i++) criarBrilho();
+        animarBrilhosRealtime();
+      } else {
+        video.onloadedmetadata = () => {
+          brilhosCanvas.width = video.videoWidth;
+          brilhosCanvas.height = video.videoHeight;
+          brilhos = [];
+          for (let i = 0; i < MAX_BRILHOS; i++) criarBrilho();
+          animarBrilhosRealtime();
+        };
+      }
+    }
 
-  startRecording();
-  showStatus('🔴 Gravando novamente');
-};
+    initBrilhosQuandoVideoPronto();
 
-btnMoldura.onclick = () => {
-  molduraIndex = (molduraIndex + 1) % molduras.length;
-  overlay.src = molduras[molduraIndex];
-  showStatus(`Moldura ${molduraIndex + 1}`);
-};
+    // Botão de ligar/desligar brilhos
+    const btnBrilhos = document.getElementById('btnBrilhos');
+    btnBrilhos.addEventListener('click', () => {
+      brilhosAtivos = !brilhosAtivos;
+    });
 
-btnBrilhos.onclick = () => {
-  brilhosAtivos = !brilhosAtivos;
-  showStatus(brilhosAtivos ? 'Brilhos ON ✨' : 'Brilhos OFF');
-};
+    // ==== TROCA DE MOLDURA ====
+    const overlayImg = document.getElementById('overlay');
+    const btnMoldura = document.getElementById('btnMoldura');
 
+    const molduras = [
+      'moldura1.png',
+      'moldura2.png'
+      // pode adicionar mais: 'moldura3.png', 'moldura4.png', ...
+    ];
+    let molduraIndex = 0;
 
-// ========================================
-// INICIALIZAÇÃO
-// ========================================
-startCamera();
+    btnMoldura.addEventListener('click', () => {
+      molduraIndex = (molduraIndex + 1) % molduras.length;
+      overlayImg.src = molduras[molduraIndex];
+    });
+  </script>
+</body>
+</html>
