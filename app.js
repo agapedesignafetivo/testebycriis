@@ -81,26 +81,43 @@ function takePhoto() {
   photoCanvas.height = height;
   const ctx = photoCanvas.getContext('2d');
 
-  // Vídeo (espelhado se frontal)
+  // CORREÇÃO: Mantém proporção do vídeo original
+  const videoAspect = video.videoWidth / video.videoHeight;
+  const canvasAspect = width / height;
+  
+  let drawWidth, drawHeight, offsetX = 0, offsetY = 0;
+
+  if (videoAspect > canvasAspect) {
+    // Vídeo mais largo: ajusta altura
+    drawHeight = height;
+    drawWidth = height * videoAspect;
+    offsetX = (width - drawWidth) / 2;
+  } else {
+    // Vídeo mais alto: ajusta largura
+    drawWidth = width;
+    drawHeight = width / videoAspect;
+    offsetY = (height - drawHeight) / 2;
+  }
+
+  // Vídeo (centralizado e com proporção correta)
   ctx.save();
   if (usingFront) {
     ctx.translate(width, 0);
     ctx.scale(-1, 1);
   }
-  ctx.drawImage(video, 0, 0, width, height);
+  ctx.drawImage(video, offsetX, offsetY, drawWidth, drawHeight);
   ctx.restore();
 
-  // Moldura atual
+  // Moldura (ocupa todo o canvas)
   ctx.drawImage(overlay, 0, 0, width, height);
 
-  // Brilhos na foto
+  // Brilhos
   desenharBrilhosNaFoto(ctx, width, height);
 
-  // Preview e download
+  // Download e preview
   const dataUrl = photoCanvas.toDataURL('image/png');
   preview.src = dataUrl;
   preview.style.display = 'block';
-  
   setTimeout(() => preview.style.display = 'none', 3000);
   preview.onclick = () => preview.style.display = 'none';
 
@@ -109,47 +126,51 @@ function takePhoto() {
   link.download = 'foto-moldura.png';
   link.click();
 
-  showStatus('Foto salva nos Downloads!');
+  showStatus('Foto salva (proporção corrigida)');
 }
+
 
 // ========================================
 // VÍDEO (9:16 com moldura e brilhos)
 // ========================================
-function startRecording() {
-  if (!stream) return;
+function drawFrame() {
+  if (!drawing) return;
 
-  const width = 720;
-  const height = 1280;
+  ctx.clearRect(0, 0, width, height);
+
+  // CORREÇÃO: Mesmo cálculo de proporção para vídeo
+  const videoAspect = video.videoWidth / video.videoHeight;
+  const canvasAspect = width / height;
   
-  recordCanvas.width = width;
-  recordCanvas.height = height;
-  const ctx = recordCanvas.getContext('2d');
+  let drawWidth, drawHeight, offsetX = 0, offsetY = 0;
 
-  drawing = true;
-
-  function drawFrame() {
-    if (!drawing) return;
-
-    ctx.clearRect(0, 0, width, height);
-
-    // Vídeo
-    ctx.save();
-    if (usingFront) {
-      ctx.translate(width, 0);
-      ctx.scale(-1, 1);
-    }
-    ctx.drawImage(video, 0, 0, width, height);
-    ctx.restore();
-
-    // Moldura
-    ctx.drawImage(overlay, 0, 0, width, height);
-
-    // Brilhos
-    desenharBrilhosNaFoto(ctx, width, height);
-
-    requestAnimationFrame(drawFrame);
+  if (videoAspect > canvasAspect) {
+    drawHeight = height;
+    drawWidth = height * videoAspect;
+    offsetX = (width - drawWidth) / 2;
+  } else {
+    drawWidth = width;
+    drawHeight = width / videoAspect;
+    offsetY = (height - drawHeight) / 2;
   }
 
+  // Vídeo (centralizado)
+  ctx.save();
+  if (usingFront) {
+    ctx.translate(width, 0);
+    ctx.scale(-1, 1);
+  }
+  ctx.drawImage(video, offsetX, offsetY, drawWidth, drawHeight);
+  ctx.restore();
+
+  // Moldura
+  ctx.drawImage(overlay, 0, 0, width, height);
+
+  // Brilhos
+  desenharBrilhosNaFoto(ctx, width, height);
+
+  requestAnimationFrame(drawFrame);
+}
   drawFrame();
 
   // Gravação
