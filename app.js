@@ -124,7 +124,6 @@ async function startCamera() {
   link.click();
 
   showStatus('Foto salva (proporção corrigida)');
-}
 
 
 // ========================================
