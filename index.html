@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Cabine de Fotos | Cris Produções</title>
+
+  <style>
+    :root {
+      --cor-rec: #ff4444;
+      --cor-status: rgba(0,0,0,0.6);
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background:#000; color:#fff; font-family:sans-serif; overflow:hidden; }
+
+    #video {
+      position: fixed;
+      inset: 0;
+      width: 100vw;
+      height: 100vh;
+      object-fit: cover;
+    }
+
+    #overlay {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+    }
+
+    #brilhosCanvas {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 5;
+    }
+
+    #controls {
+      position: fixed;
+      bottom: 25px;
+      left: 0;
+      width: 100%;
+      display: flex;
+      gap: 20px;
+      padding: 0 16px;
+      z-index: 20;
+      overflow-x: auto;
+    }
+
+    .icon-btn {
+      width: 80px;
+      height: 80px;
+      border-radius: 50%;
+      border: none;
+      background: none;
+    }
+
+    .icon-btn img {
+      width: 100%;
+      height: 100%;
+      border-radius: 50%;
+      object-fit: cover;
+    }
+
+    #status {
+      position: fixed;
+      top: 10px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: var(--cor-status);
+      padding: 6px 12px;
+      border-radius: 999px;
+      display: none;
+      z-index: 30;
+    }
+
+    #recIndicator {
+      position: fixed;
+      top: 40px;
+      left: 50%;
+      transform: translateX(-50%);
+      display: none;
+      gap: 8px;
+      font-weight: bold;
+      color: var(--cor-rec);
+      z-index: 30;
+    }
+
+    .rec-dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background: red;
+      animation: piscar 1s infinite;
+    }
+
+    @keyframes piscar {
+      0%,50%{opacity:1}
+      50%,100%{opacity:.3}
+    }
+  </style>
+</head>
+<body>
+
+  <video id="video" autoplay playsinline muted></video>
+  <img id="overlay" src="moldura1.png">
+
+  <canvas id="brilhosCanvas"></canvas>
+  <canvas id="photoCanvas" hidden></canvas>
+  <canvas id="recordCanvas" hidden></canvas>
+
+  <img id="brilhoImg" src="brilho.png" hidden>
+  <img id="preview" hidden>
+
+  <div id="status"></div>
+  <div id="recIndicator">
+    <span class="rec-dot"></span>
+    <span id="recTime">00:00</span>
+  </div>
+
+  <div id="controls">
+    <button id="btnCamera" class="icon-btn"><img src="trocarcamera.png"></button>
+    <button id="btnPhoto" class="icon-btn"><img src="tirarfoto.png"></button>
+    <button id="btnStartRec" class="icon-btn"><img src="rec.png"></button>
+    <button id="btnStopRec" class="icon-btn" hidden><img src="stop.png"></button>
+    <button id="btnMoldura" class="icon-btn"><img src="trocarmoldura.png"></button>
+    <button id="btnBrilhos" class="icon-btn"><img src="brilhos.png"></button>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
