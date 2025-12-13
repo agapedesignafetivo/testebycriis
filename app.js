@@ -18,6 +18,11 @@ const btnBrilhos = document.getElementById('btnBrilhos');
 const brilhosCanvas = document.getElementById('brilhosCanvas');
 const bCtx = brilhosCanvas.getContext('2d');
 const brilhoImg = document.getElementById('brilhoImg');
+const videoPreviewOverlay = document.getElementById('videoPreviewOverlay');
+const videoPreview = document.getElementById('videoPreview');
+const btnDownloadVideo = document.getElementById('btnDownloadVideo');
+let lastVideoUrl = null;
+
 
 // Configurações
 const API_URL = 'https://moldurapersonalizadabycriisproducoes-production.up.railway.app/convert';
@@ -298,19 +303,18 @@ async function sendToServer(blob) {
     formData.append('video', blob, 'video.webm');
 
     const response = await fetch(API_URL, { method: 'POST', body: formData });
-    
     if (!response.ok) throw new Error('API falhou');
 
+    // AQUI entra o trecho que você perguntou
     const mp4Blob = await response.blob();
     const url = URL.createObjectURL(mp4Blob);
-    
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = 'video-moldura.mp4';
-    link.click();
-    
-    setTimeout(() => URL.revokeObjectURL(url), 5000);
-    showStatus('✅ Vídeo MP4 baixado!');
+
+    if (lastVideoUrl) URL.revokeObjectURL(lastVideoUrl);
+    lastVideoUrl = url;
+
+    videoPreview.src = url;
+    videoPreviewOverlay.style.display = 'flex';
+    showStatus('Vídeo pronto (veja o preview)');
   } catch (error) {
     console.error(error);
     showStatus('❌ Erro na conversão', true);
@@ -420,6 +424,20 @@ btnCamera.onclick = () => {
 btnPhoto.onclick = takePhoto;
 btnStartRec.onclick = startRecording;
 btnStopRec.onclick = stopRecording;
+
+btnDownloadVideo.onclick = () => {
+  if (!lastVideoUrl) return;
+
+  const a = document.createElement('a');
+  a.href = lastVideoUrl;
+  a.download = 'video-moldura.mp4';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+
+  showStatus('Download do vídeo solicitado');
+};
+
 
 btnMoldura.onclick = () => {
   molduraIndex = (molduraIndex + 1) % molduras.length;
