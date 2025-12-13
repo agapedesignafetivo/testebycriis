@@ -3,8 +3,41 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>SEEEEEEILA</title>
+  <title>Teste by Criis</title>
   <style>
+
+
+#recIndicator {
+  position: fixed;
+  top: 40px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: none;
+  align-items: center;
+  gap: 8px;
+  font-family: sans-serif;
+  font-size: 16px;
+  font-weight: 700;
+  color: #ff5555;
+  z-index: 25;
+}
+
+#recIndicator .rec-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #ff0000;
+  box-shadow: 0 0 6px rgba(255,0,0,0.7);
+  animation: recBlink 1s infinite;
+}
+
+@keyframes recBlink {
+  0%, 50% { opacity: 1; }
+  50%, 100% { opacity: 0.2; }
+}
+
+
+    
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { margin:0; background:#000; color:#fff; font-family:sans-serif; overflow:hidden; }
 
@@ -194,6 +227,11 @@
   <img id="preview" />
 
   <div id="status"></div>
+
+  <div id="recIndicator" style="display:none;">
+  <span class="rec-dot"></span>
+  <span id="recTime">00:00</span>
+</div>
 
   <div id="controls">
     <!-- câmera / foto / gravação -->
