@@ -1,15 +1,18 @@
 // ===============================
 // CABINE DE FOTOS - CRIS PRODUÇÕES
+// (DUAS molduras + mensagem de processamento + modo Android)
 // ===============================
 
-// CONFIGURAÇÃO GERAL
 const CONFIG = {
   FOTO: { width: 720, height: 1280 }, // 9:16
   VIDEO_FPS: 24,
   MAX_BRILHOS: 15,
   API_URL: 'https://moldurapersonalizadabycriisproducoes-production.up.railway.app/convert',
-  MOLDURAS: ['moldura1.png', 'moldura2.png']
+  MOLDURAS: ['moldura1.png', 'moldura2.png'] // duas molduras
 };
+
+// Detecta Android (para tratar preview de forma diferente)
+const isAndroid = /Android/i.test(navigator.userAgent); // [web:294]
 
 // ATALHO
 const el = id => document.getElementById(id);
@@ -41,7 +44,6 @@ const btnBrilhos = el('btnBrilhos');
 // ESTADO
 let stream;
 let usingFront = true;
-let molduraIndex = 0;
 let brilhosAtivos = true;
 let brilhos = [];
 let drawing = false;
@@ -50,15 +52,26 @@ let chunks = [];
 let lastVideoUrl = null;
 let recTimer = null;
 let recStartTime = null;
+let molduraIndex = 0;
+
+// garante moldura inicial
+overlay.src = CONFIG.MOLDURAS[molduraIndex];
 
 // ===============================
 // STATUS TOPO
 // ===============================
-function status(msg, erro = false) {
-  statusEl.textContent = msg;
+function status(msg, erro = false, autoHide = true) {
+  statusEl.innerText = msg; // [web:186]
   statusEl.style.display = 'inline-block';
   statusEl.style.backgroundColor = erro ? 'rgba(180,0,0,0.7)' : 'rgba(0,0,0,0.6)';
-  setTimeout(() => { statusEl.style.display = 'none'; }, 3000);
+
+  if (autoHide) {
+    setTimeout(() => { statusEl.style.display = 'none'; }, 3000);
+  }
+}
+
+function clearStatus() {
+  statusEl.style.display = 'none';
 }
 
 // ===============================
@@ -99,13 +112,11 @@ function drawVideoFit(ctx, video, W, H, mirror) {
   let dw, dh, dx, dy;
 
   if (videoAspect > canvasAspect) {
-    // vídeo mais deitado -> corta laterais
     dh = H;
     dw = H * videoAspect;
     dx = (W - dw) / 2;
     dy = 0;
   } else {
-    // vídeo mais em pé -> corta em cima/baixo
     dw = W;
     dh = W / videoAspect;
     dx = 0;
@@ -152,7 +163,7 @@ function takePhoto() {
   a.download = 'foto-moldura.png';
   a.click();
 
-  status('Foto salva (sem esticar)');
+  status('Foto salva');
 }
 
 // ===============================
@@ -181,20 +192,18 @@ function startRecording() {
     drawVideoFit(ctx, video, width, height, usingFront);
     ctx.drawImage(overlay, 0, 0, width, height);
 
-    // se quiser brilhos no vídeo final, poderia desenhar aqui também
-    // (por enquanto brilhos ficam só no preview da câmera)
     requestAnimationFrame(drawFrame);
   }
 
   drawFrame();
 
-  const canvasStream = recordCanvas.captureStream(CONFIG.VIDEO_FPS);
+  const canvasStream = recordCanvas.captureStream(CONFIG.VIDEO_FPS); // [web:147]
   const mixedStream = new MediaStream([...canvasStream.getVideoTracks()]);
   const audioTrack = stream.getAudioTracks()[0];
   if (audioTrack) mixedStream.addTrack(audioTrack);
 
   chunks = [];
-  mediaRecorder = new MediaRecorder(mixedStream, { mimeType: 'video/webm' });
+  mediaRecorder = new MediaRecorder(mixedStream, { mimeType: 'video/webm' }); // [web:210]
 
   mediaRecorder.ondataavailable = e => {
     if (e.data.size > 0) chunks.push(e.data);
@@ -240,7 +249,8 @@ function stopRecording() {
 
     btnStartRec.style.display = 'inline-block';
     btnStopRec.style.display = 'none';
-    status('Processando vídeo...');
+
+    status('Estamos processando seu vídeo, aguarde...', false, false);
   }
 }
 
@@ -248,7 +258,6 @@ function stopRecording() {
 // ENVIO PARA API (WEBM -> MP4)
 // ===============================
 async function sendToServer(blob) {
-  status('Enviando para conversão...');
   try {
     const formData = new FormData();
     formData.append('video', blob, 'video.webm');
@@ -256,22 +265,52 @@ async function sendToServer(blob) {
     const resp = await fetch(CONFIG.API_URL, {
       method: 'POST',
       body: formData
-    });
+    }); // [web:199]
 
     if (!resp.ok) throw new Error('API falhou');
 
     const mp4Blob = await resp.blob();
-    const url = URL.createObjectURL(mp4Blob);
+    const url = URL.createObjectURL(mp4Blob); // [web:295]
 
     if (lastVideoUrl) URL.revokeObjectURL(lastVideoUrl);
     lastVideoUrl = url;
 
-    videoPreview.src = url;
-    videoPreviewOverlay.style.display = 'flex';
-    status('Vídeo pronto (veja o preview)');
+    clearStatus();
+
+    if (isAndroid) {
+      // MODO ANDROID: evita preview em <video> com blob, mostra link
+      videoPreviewOverlay.style.display = 'flex';
+      videoPreview.style.display = 'none';
+
+      const box = document.querySelector('.video-preview-box');
+      let link = document.getElementById('androidOpenLink');
+      if (!link) {
+        link = document.createElement('a');
+        link.id = 'androidOpenLink';
+        link.target = '_blank';
+        link.style.display = 'inline-block';
+        link.style.padding = '10px 16px';
+        link.style.borderRadius = '10px';
+        link.style.background = '#ffffffd0';
+        link.style.color = '#000';
+        link.style.fontWeight = '700';
+        link.style.textAlign = 'center';
+        link.style.textDecoration = 'none';
+        link.innerText = 'Abrir vídeo em outro app';
+        box.insertBefore(link, btnDownloadVideo);
+      }
+      link.href = url;
+
+      status('Toque em "Abrir vídeo em outro app" para visualizar.', false, true);
+    } else {
+      // DESKTOP / OUTROS: preview normal no <video>
+      videoPreview.style.display = 'block';
+      videoPreview.src = url;
+      videoPreviewOverlay.style.display = 'flex';
+    }
   } catch (e) {
     console.error(e);
-    status('Erro na conversão', true);
+    status('Erro na conversão', true, true);
   }
 }
 
@@ -346,6 +385,12 @@ btnPhoto.onclick = takePhoto;
 btnStartRec.onclick = startRecording;
 btnStopRec.onclick = stopRecording;
 
+btnMoldura.onclick = () => {
+  molduraIndex = (molduraIndex + 1) % CONFIG.MOLDURAS.length;
+  overlay.src = CONFIG.MOLDURAS[molduraIndex];
+  status(`Moldura ${molduraIndex + 1}`);
+};
+
 btnDownloadVideo.onclick = () => {
   if (!lastVideoUrl) return;
   const a = document.createElement('a');
@@ -368,12 +413,6 @@ btnRecordAgain.onclick = () => {
 
   startRecording();
   status('🔴 Gravando novamente');
-};
-
-btnMoldura.onclick = () => {
-  molduraIndex = (molduraIndex + 1) % CONFIG.MOLDURAS.length;
-  overlay.src = CONFIG.MOLDURAS[molduraIndex];
-  status(`Moldura ${molduraIndex + 1}`);
 };
 
 btnBrilhos.onclick = () => {
